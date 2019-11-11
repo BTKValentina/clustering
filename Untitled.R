@@ -143,5 +143,6 @@ test$LDA<-ldaOut.topics
 topicsLDA<-data.frame("LDA"=1:nk,"topicLDA"=t(ldaOut.terms))
 test1<-merge(test, topicsLDA, by="LDA", all.x=TRUE)
 
+write.xlsx(test1, "test.xlsx")
 
 
