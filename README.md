@@ -25,6 +25,7 @@ lo Script Untitled.R fa le seguenti cose:
   - keyword madre: keyword usata per espandere la ricerca
   - keyword: keyword trovata su keyword planner
   - Cluster 1: classificazione manuale 
+  - Cutree: classificazione gerarchica sulle keyword e non sui testi
   - Kmeas: clister secondo l'algortimo kmeans
   - topicLDA 1 - topicLDA6: i sei termini che compongono ciascun topic
   
