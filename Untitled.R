@@ -27,10 +27,11 @@ get_google_serp_urls <- function(querie, number_of_results, country_code, langua
   return(request)
   
 }
-
-
+#lista dei file nella directory
+list.files()
 #carico il db son le keyword
-dati<-read.xlsx("Keyword.xlsx")
+keyword="keyword.xlsx"
+dati<-read.xlsx(keyword)
 dati$testo<-NA
 
 #inserisco la parola da cercare, il numero di rusltati, il contry e la lingua
@@ -40,7 +41,7 @@ country_code <- "IT"
 language_code <- "it"
 user_agent <- "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36"
 dati$test<-NA
-for (i in 124:dim(dati)[1]){
+for (i in 196:dim(dati)[1]){
   querie <- dati$Keyword[i]
 doc <- get_google_serp_urls(querie, number_of_results, country_code, language_code, user_agent)
 
@@ -58,18 +59,60 @@ pippo<- gsub('[[:digit:]]+', '', pippo)
 pippo <- gsub('[[:punct:]]+', '', pippo)
 
 dati$test[i]<-pippo}
-
-
-
-
 test<-subset(dati, !is.na(test))
+
+#Cluster sulle keyword
+###provo con clustering gerarchico
+docs <- Corpus(VectorSource(test$Keyword))
+#Transform to lower case
+docs <- tm_map(docs,content_transformer(tolower))
+#remove potentiallyy problematic symbols
+toSpace <- content_transformer(function(x, pattern) { return (gsub(pattern, " ", x))})
+docs <- tm_map(docs, toSpace, "-")
+docs <- tm_map(docs, toSpace, ":")
+docs <- tm_map(docs, toSpace, "‘")
+docs <- tm_map(docs, toSpace, " -")
+docs <- tm_map(docs, toSpace, "“")
+docs <- tm_map(docs, toSpace, "”")
+#remove punctuation
+docs <- tm_map(docs, removePunctuation)
+#Strip digits
+docs <- tm_map(docs, removeNumbers)
+#remove stopwords
+docs <- tm_map(docs, removeWords, stopwords("italian"))
+#remove whitespace
+docs <- tm_map(docs, stripWhitespace)
+docs <- tm_map(docs,stemDocument)
+dtm <- DocumentTermMatrix(docs)
+m <- as.matrix(dtm)
+rownames(m) <- paste(substring(rownames(m),1,3),rep("..",nrow(m)),
+                     substring(rownames(m), nchar(rownames(m))-12,nchar(rownames(m))-4))
+
+#definisco il numero di cluster uguale al numero di cluster individualto maualmente (qui
+#da implementare metodo automatico per defnire il nuemero ottimale di cluster)
+nk=length(unique(test$Cluster.1))
+
+
+#compute distance between document vectors
+d <- dist(m)
+keyword.hclust <- hclust(d,method="ward.D")
+keyword.cutree <- cutree(keyword.hclust, nk)
+keyword.order <- keyword.hclust$order
+
+test$cutree<-keyword.cutree
+
+
+
 sentences <- sub("http://([[:alnum:]|[:punct:]])+", '', test$test)
 stopwords_regex = paste(stopwords('it'), collapse = '\\b|\\b')
 stopwords_regex = paste0('\\b', stopwords_regex, '\\b')
 sentences = stringr::str_replace_all(sentences, stopwords_regex, '')
 
 corpus = tm::Corpus(tm::VectorSource(sentences)) 
-
+#aggiungo stowords da togliere
+my_stopwords<- c("quel", "qual","più","può")
+#remove custom stopwords
+corpus <- tm_map(corpus, removeWords, my_stopwords)
 # Cleaning up 
 # Handling UTF-8 encoding problem from the dataset 
 corpus.cleaned <- tm::tm_map(corpus, function(x) iconv(x, to='UTF-8-MAC', sub='byte'))  
@@ -92,8 +135,18 @@ dist.matrix = proxy::dist(tfidf.matrix, method = "cosine")
 #da implementare metodo automatico per defnire il nuemero ottimale di cluster)
 nk=length(unique(test$Cluster.1))
 
+#trovo il numero ottimale di cluster
+#kmeans –  (elbow method)
+#plot della somma delle distanze withun class  (withinss) 
+wss <- 2:29
+for (i in 2:29) wss[i] <- sum(kmeans(tfidf.matrix,centers=i,nstart=25)$withinss)
+plot(2:29, wss[2:29], type="b", xlab="Number of Clusters",ylab="Within groups sum of squares")
+
+
+
 clustering.kmeans <- kmeans(tfidf.matrix, nk) 
 clustering.hierarchical <- hclust(dist.matrix, method = "ward.D2") 
+clustering.hierarchical.cutree <- cutree(keyword.hclust, nk)
 clustering.dbscan <- dbscan::hdbscan(dist.matrix, minPts = 10)
 
 #Cerco i clustering migliore
@@ -134,6 +187,9 @@ par(previous.par) # recovering the original plot space parameters
 
 #creo una colonna Kmeas sul foglio originale di excel con i cluster di kmeans
 test$Kmeas<-master.cluster
+#creo una colonna DBscan sul foglio originale di excel con i cluster di kmeans
+test$DBscan<-clustering.dbscan
+
 #provo LDA
 
 ldaOut <-LDA(tdm,nk, method="Gibbs")
@@ -141,7 +197,9 @@ ldaOut.topics <- as.matrix(topics(ldaOut))
 ldaOut.terms <- as.matrix(terms(ldaOut,6))  
 test$LDA<-ldaOut.topics
 topicsLDA<-data.frame("LDA"=1:nk,"topicLDA"=t(ldaOut.terms))
-test1<-merge(test, topicsLDA, by="LDA", all.x=TRUE)
+test3<-merge(test, topicsLDA, by="LDA", all.x=TRUE)
+
+
 
 write.xlsx(test1, "test.xlsx")
 
